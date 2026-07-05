@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"polymarket-copytrader/pkg/config"
+	"polymarket-copytrader/pkg/paper"
 	"polymarket-copytrader/pkg/polymarket"
 	"polymarket-copytrader/pkg/server"
 	"polymarket-copytrader/pkg/store"
@@ -30,7 +31,16 @@ func main() {
 		log.Fatalf("polymarket client: %v", err)
 	}
 
-	tr := tracker.New(cfg, client, st)
+	var pt *paper.PaperTrader
+	if !cfg.CanPlaceOrders() {
+		pt, err = paper.New(cfg.PaperPath, cfg.PaperStakeUSD)
+		if err != nil {
+			log.Fatalf("paper trader: %v", err)
+		}
+		log.Printf("paper trading enabled — $%.2f virtual stake", cfg.PaperStakeUSD)
+	}
+
+	tr := tracker.New(cfg, client, st, pt)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

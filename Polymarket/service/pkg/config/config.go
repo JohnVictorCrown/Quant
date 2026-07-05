@@ -11,6 +11,8 @@ type Config struct {
 	Port            string
 	Wallets         []string
 	StorePath       string
+	PaperPath       string
+	PaperStakeUSD   float64
 	CopyAmountUSD   float64
 	ScanIntervalMin int
 	PrivateKey      string
@@ -24,6 +26,8 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Port:            envStr("PORT", "8080"),
 		StorePath:       envStr("STORE_PATH", "copied_trades.json"),
+		PaperPath:       envStr("PAPER_PATH", "paper_trades.json"),
+		PaperStakeUSD:   envFloat("PAPER_STAKE_USD", 100),
 		CopyAmountUSD:   envFloat("COPY_AMOUNT_USD", 10),
 		ScanIntervalMin: envInt("SCAN_INTERVAL_MIN", 5),
 		PrivateKey:      os.Getenv("POLY_PRIVATE_KEY"),

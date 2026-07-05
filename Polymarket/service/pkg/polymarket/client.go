@@ -125,13 +125,21 @@ func (c *Client) BuildCopyTrade(pos Position, amountUSD float64) CopyTrade {
 }
 
 func (c *Client) PlaceOrder(ctx context.Context, trade CopyTrade) error {
+	return c.placeOrder(ctx, trade, "BUY")
+}
+
+func (c *Client) CloseOrder(ctx context.Context, trade CopyTrade) error {
+	return c.placeOrder(ctx, trade, "SELL")
+}
+
+func (c *Client) placeOrder(ctx context.Context, trade CopyTrade, side string) error {
 	if !c.canTrade {
 		return fmt.Errorf("no auth credentials configured")
 	}
 
 	order, err := clob.NewOrderBuilder(c.sdk.CLOB, c.signer).
 		TokenID(trade.TokenID).
-		Side("BUY").
+		Side(side).
 		Price(trade.Price).
 		Size(trade.Size).
 		OrderType(clobtypes.OrderTypeGTC).

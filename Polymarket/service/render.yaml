@@ -4,14 +4,7 @@ services:
     env: go
     buildCommand: go build -o server ./cmd/server
     startCommand: ./server
+    envGroup: Quant
     envVars:
-      - key: PORT
-        value: 8080
-      - key: WALLETS_CONFIG
-        value: wallets.config
-      - key: STORE_PATH
-        value: copied_trades.json
       - key: COPY_AMOUNT_USD
-        value: "10"
-      - key: SCAN_INTERVAL_MIN
-        value: "5"
+        value: "20"  # Overrides the group's value specifically for this service

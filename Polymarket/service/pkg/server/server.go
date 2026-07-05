@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"polymarket-copytrader/pkg/config"
+	"polymarket-copytrader/pkg/paper"
 	"polymarket-copytrader/pkg/polymarket"
 	"polymarket-copytrader/pkg/store"
 	"polymarket-copytrader/pkg/tracker"
@@ -68,6 +69,11 @@ func (s *Server) handleUptime(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBalance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	if pt := s.tracker.Paper(); pt != nil {
+		s.handlePaperBalance(w, pt)
+		return
+	}
+
 	addr := s.cfg.UserAddress
 	if addr == "" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -126,6 +132,34 @@ func (s *Server) handleBalance(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+func (s *Server) handlePaperBalance(w http.ResponseWriter, pt *paper.PaperTrader) {
+	balance, openCount, realizedPnl, totalTrades := pt.Stats()
+	positions := pt.AllPositions()
+
+	var posList []map[string]interface{}
+	for assetID, pos := range positions {
+		posList = append(posList, map[string]interface{}{
+			"asset":   assetID,
+			"size":    pos.Size,
+			"price":   pos.Price,
+			"market":  pos.Market,
+			"outcome": pos.Outcome,
+			"value":   pos.Size * pos.Price,
+		})
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"mode":               "paper",
+		"balance":            balance,
+		"initial_stake":      s.cfg.PaperStakeUSD,
+		"open_positions":     posList,
+		"open_positions_count": openCount,
+		"total_realized_pnl": realizedPnl,
+		"total_trades":       totalTrades,
+		"win_rate":           "—",
+	})
+}
+
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -141,6 +175,15 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"live_trading":    s.cfg.CanPlaceOrders(),
 		"copy_amount_usd": s.cfg.CopyAmountUSD,
 		"scan_interval":   fmt.Sprintf("%dm", s.cfg.ScanIntervalMin),
+		"paper_mode":      !s.cfg.CanPlaceOrders(),
+	}
+
+	if pt := s.tracker.Paper(); pt != nil {
+		bal, openPos, rPnl, totTrades := pt.Stats()
+		status["paper_balance"] = bal
+		status["paper_open_positions"] = openPos
+		status["paper_realized_pnl"] = rPnl
+		status["paper_total_trades"] = totTrades
 	}
 
 	if ls := s.tracker.LastScan(); !ls.IsZero() {
