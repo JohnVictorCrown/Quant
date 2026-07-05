@@ -9,6 +9,7 @@ type Wallet struct {
 	Pnl           float64
 	ROI           float64
 	Score         float64
+	WinRate       float64
 	TotalTrades   int
 	MarketsTraded int
 	Rank          int

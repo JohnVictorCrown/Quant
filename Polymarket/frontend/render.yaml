@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: quant-frontend
+    env: static
+    buildCommand: bun install && bun run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://quant-api.onrender.com

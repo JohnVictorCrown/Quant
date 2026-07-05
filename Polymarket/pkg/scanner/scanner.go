@@ -2,7 +2,10 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -25,6 +28,10 @@ func New(cfg *config.Config) (*Scanner, error) {
 }
 
 func (s *Scanner) Scan(ctx context.Context) (*types.ScanResult, error) {
+	if result, ok := s.loadCache(); ok {
+		return result, nil
+	}
+
 	markets, err := s.client.FetchActiveMarkets(ctx, s.cfg.MarketLimit)
 	if err != nil {
 		return nil, fmt.Errorf("fetch markets: %w", err)
@@ -44,8 +51,15 @@ func (s *Scanner) Scan(ctx context.Context) (*types.ScanResult, error) {
 		return nil, fmt.Errorf("fetch trade counts: %w", err)
 	}
 
+	result := s.scoreAndRank(wallets, markets)
+	s.saveCache(result)
+
+	return result, nil
+}
+
+func (s *Scanner) scoreAndRank(wallets []types.Wallet, markets []types.MarketSummary) *types.ScanResult {
 	for i := range wallets {
-		wallets[i].Score = (wallets[i].Pnl / wallets[i].TotalVolume) / float64(max(wallets[i].TotalTrades, 1)) * 100000
+		wallets[i].Score = (wallets[i].Pnl / wallets[i].TotalVolume) * 100000
 	}
 
 	sort.Slice(wallets, func(i, j int) bool {
@@ -60,13 +74,47 @@ func (s *Scanner) Scan(ctx context.Context) (*types.ScanResult, error) {
 		wallets[i].Rank = i + 1
 	}
 
-	result := &types.ScanResult{
+	return &types.ScanResult{
 		GeneratedAt:  time.Now(),
 		Markets:      markets,
 		TopWallets:   wallets,
 		TotalMarkets: len(markets),
 		TotalWallets: len(wallets),
 	}
+}
 
-	return result, nil
+func (s *Scanner) loadCache() (*types.ScanResult, bool) {
+	info, err := os.Stat(s.cfg.CachePath)
+	if err != nil {
+		return nil, false
+	}
+
+	if time.Since(info.ModTime()) > time.Duration(s.cfg.CacheTTL)*time.Minute {
+		return nil, false
+	}
+
+	data, err := os.ReadFile(s.cfg.CachePath)
+	if err != nil {
+		return nil, false
+	}
+
+	var result types.ScanResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, false
+	}
+
+	return &result, true
+}
+
+func (s *Scanner) saveCache(result *types.ScanResult) {
+	if err := os.MkdirAll(filepath.Dir(s.cfg.CachePath), 0755); err != nil {
+		return
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		return
+	}
+
+	os.WriteFile(s.cfg.CachePath, data, 0644)
 }

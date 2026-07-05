@@ -10,6 +10,8 @@ type Config struct {
 	MinVolume   float64
 	OutputPath  string
 	MarketLimit int
+	CachePath   string
+	CacheTTL    int
 }
 
 func Load() (*Config, error) {
@@ -18,6 +20,8 @@ func Load() (*Config, error) {
 		MinVolume:   envFloat("MIN_VOLUME", 1000),
 		OutputPath:  envStr("OUTPUT_PATH", "output/report.html"),
 		MarketLimit: envInt("MARKET_LIMIT", 20),
+		CachePath:   envStr("CACHE_PATH", "output/.cache.json"),
+		CacheTTL:    envInt("CACHE_TTL_MINUTES", 60),
 	}, nil
 }
 

@@ -129,11 +129,16 @@ func (c *Client) fetchLeaderboardPage(ctx context.Context, offset, limit int) ([
 	return wallets, nil
 }
 
+type tradeStats struct {
+	total int
+	wins  int
+}
+
 func (c *Client) EnrichWithTradeCounts(ctx context.Context, wallets []types.Wallet) ([]types.Wallet, error) {
 	type countResult struct {
-		index int
-		count int
-		err   error
+		index  int
+		stats  tradeStats
+		err    error
 	}
 
 	ch := make(chan countResult, len(wallets))
@@ -144,8 +149,8 @@ func (c *Client) EnrichWithTradeCounts(ctx context.Context, wallets []types.Wall
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			count, err := c.fetchTradeCount(ctx, addr)
-			ch <- countResult{idx, count, err}
+			stats, err := c.fetchClosedStats(ctx, addr)
+			ch <- countResult{idx, stats, err}
 		}(i, w.Address)
 	}
 
@@ -154,17 +159,25 @@ func (c *Client) EnrichWithTradeCounts(ctx context.Context, wallets []types.Wall
 		if r.err != nil {
 			return nil, r.err
 		}
-		wallets[r.index].TotalTrades = r.count
+		wallets[r.index].TotalTrades = r.stats.total
+		wallets[r.index].MarketsTraded = r.stats.total
+		wr := 0.0
+		if r.stats.total > 0 {
+			wr = float64(r.stats.wins) / float64(r.stats.total) * 100
+		}
+		wallets[r.index].WinRate = wr
 	}
 
 	return wallets, nil
 }
 
-func (c *Client) fetchTradeCount(ctx context.Context, address string) (int, error) {
-	return c.countSlice(ctx, fmt.Sprintf("https://data-api.polymarket.com/closed-positions?user=%s&limit=500", address))
+type closedPosition struct {
+	RealizedPnl float64 `json:"realizedPnl"`
 }
 
-func (c *Client) countSlice(ctx context.Context, url string) (int, error) {
+func (c *Client) fetchClosedStats(ctx context.Context, address string) (tradeStats, error) {
+	url := fmt.Sprintf("https://data-api.polymarket.com/closed-positions?user=%s&limit=500", address)
+
 	var lastErr error
 	for attempt := 0; attempt < 5; attempt++ {
 		if attempt > 0 {
@@ -173,7 +186,7 @@ func (c *Client) countSlice(ctx context.Context, url string) (int, error) {
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
-			return 0, err
+			return tradeStats{}, err
 		}
 
 		resp, err := c.httpCli.Do(req)
@@ -190,19 +203,25 @@ func (c *Client) countSlice(ctx context.Context, url string) (int, error) {
 
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			return 0, fmt.Errorf("API %d", resp.StatusCode)
+			return tradeStats{}, fmt.Errorf("API %d", resp.StatusCode)
 		}
 
-		var data []json.RawMessage
-		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		var positions []closedPosition
+		if err := json.NewDecoder(resp.Body).Decode(&positions); err != nil {
 			resp.Body.Close()
-			return 0, err
+			return tradeStats{}, err
 		}
 		resp.Body.Close()
 
-		return len(data), nil
+		wins := 0
+		for _, p := range positions {
+			if p.RealizedPnl > 0 {
+				wins++
+			}
+		}
+		return tradeStats{total: len(positions), wins: wins}, nil
 	}
-	return 0, fmt.Errorf("rate limited after retries: %w", lastErr)
+	return tradeStats{}, fmt.Errorf("rate limited after retries: %w", lastErr)
 }
 
 func volumeToFloat(v interface{}) float64 {
